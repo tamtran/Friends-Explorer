@@ -1,8 +1,22 @@
 package com.eastagile.android;
 
 import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
+
+import org.apache.http.HttpResponse;
+import org.apache.http.NameValuePair;
+import org.apache.http.client.ClientProtocolException;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.entity.UrlEncodedFormEntity;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.message.BasicNameValuePair;
 
 import android.app.Activity;
 import android.content.Context;
@@ -18,6 +32,7 @@ import android.location.LocationListener;
 import android.location.LocationManager;
 import android.location.LocationProvider;
 import android.os.Bundle;
+import android.telephony.TelephonyManager;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -43,6 +58,9 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 	static LocationManager lm;
 	StringBuilder sb;
 	int noOfFixes = 0;
+	double lat;
+	double lng;
+	String uuid;
 
 	/** Called when the activity is first created. */
 	@Override
@@ -54,16 +72,50 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 		LinearLayout zoomLayout = (LinearLayout) findViewById(R.id.zoom);
 		View zoomView = mapView.getZoomControls();
 		zoomLayout.addView(zoomView, new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
+		Location loc = null;
+		loc = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+		if (loc == null)
+			loc = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+		lat = loc.getLatitude();
+		lng = loc.getLongitude();
+//		TelephonyManager tManager = (TelephonyManager)getSystemService(Context.TELEPHONY_SERVICE);
+//		uuid = tManager.getDeviceId();
+		final TelephonyManager tm = (TelephonyManager) getBaseContext().getSystemService(Context.TELEPHONY_SERVICE);
+
+    final String tmDevice, tmSerial, tmPhone, androidId;
+    tmDevice = "" + tm.getDeviceId();
+    tmSerial = "" + tm.getSimSerialNumber();
+    androidId = "" + android.provider.Settings.Secure.getString(getContentResolver(), android.provider.Settings.Secure.ANDROID_ID);
+
+    UUID deviceUuid = new UUID(androidId.hashCode(), ((long)tmDevice.hashCode() << 32) | tmSerial.hashCode());
+    uuid = deviceUuid.toString();
+		logging("UUID " + uuid);
+		getStartupData();
+		displayCurrentLocation();
 		mapView.displayZoomControls(true);
 		mapView.setSatellite(true);
-		displayCurrentLocation();
 		mapView.setOnTouchListener(new OnTouchListener() {
 			@Override
 			public boolean onTouch(View arg0, MotionEvent arg1) {
-				return onTouchEvent((MapView)arg0, arg1);
+				return onTouchEvent((MapView) arg0, arg1);
 			}
 		});
 		mapView.invalidate();
+	}
+
+	public void getStartupData(){
+		HttpClient httpclient = new DefaultHttpClient();
+//		String url = "http://friendexplorer.heroku.com/user_location/update?name="+uuid+"&long="+Double.toString(lng)+"&lat="+Double.toString(lat);
+		String url = "http://192.168.25.174:3000/user_location/update?name="+uuid+"&long="+Double.toString(lng)+"&lat="+Double.toString(lat);
+		logging(url);
+		try {
+			HttpClient client = new DefaultHttpClient();
+      HttpGet method = new HttpGet(url);
+      @SuppressWarnings("unused")
+      HttpResponse response = client.execute(method);
+		} catch (IOException e) {
+			logging("getStartupData IOException");
+		}
 	}
 
 	@Override
@@ -110,7 +162,7 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 		sb.append(location.getTime());
 		sb.append('\n');
 	}
-	
+
 	public boolean onTouchEvent(MapView mapView, MotionEvent event) {
 		if (event.getAction() == 1) {
 			GeoPoint p = mapView.getProjection().fromPixels((int) event.getX(), (int) event.getY());
@@ -179,14 +231,6 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 	}
 
 	public void displayCurrentLocation() {
-		Location loc = null;
-		loc = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-		if (loc == null)
-			loc = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
-		double lat = loc.getLatitude();
-		double lng = loc.getLongitude();
-		logging("lat" + Double.toString(lat));
-		logging("lng" + Double.toString(lng));
 		mc = mapView.getController();
 		p = new GeoPoint((int) (lat * 1E6), (int) (lng * 1E6));
 		mc.animateTo(p);
