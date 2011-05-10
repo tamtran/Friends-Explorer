@@ -1,6 +1,8 @@
 package com.eastagile.android;
 
+import java.io.IOException;
 import java.util.List;
+import java.util.Locale;
 
 import android.app.Activity;
 import android.content.Context;
@@ -9,6 +11,8 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Point;
+import android.location.Address;
+import android.location.Geocoder;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
@@ -16,7 +20,9 @@ import android.location.LocationProvider;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.View.OnTouchListener;
 import android.widget.LinearLayout;
 import android.widget.LinearLayout.LayoutParams;
 import android.widget.Toast;
@@ -43,23 +49,29 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 	public void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.main);
-		lm = (LocationManager)getSystemService(Context.LOCATION_SERVICE);
+		lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 		mapView = (MapView) findViewById(R.id.myMap);
 		LinearLayout zoomLayout = (LinearLayout) findViewById(R.id.zoom);
 		View zoomView = mapView.getZoomControls();
 		zoomLayout.addView(zoomView, new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
 		mapView.displayZoomControls(true);
-		mapView.setSatellite(true);		
-		displayCurrentLocation();		
+		mapView.setSatellite(true);
+		displayCurrentLocation();
+		mapView.setOnTouchListener(new OnTouchListener() {
+			@Override
+			public boolean onTouch(View arg0, MotionEvent arg1) {
+				return onTouchEvent((MapView)arg0, arg1);
+			}
+		});
 		mapView.invalidate();
 	}
-	
+
 	@Override
 	protected void onResume() {
 		/*
 		 * onResume is is always called after onStart, even if the app hasn't been
 		 * paused
-		 *
+		 * 
 		 * add location listener and request updates every 1000ms or 10m
 		 */
 		lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 10f, this);
@@ -72,41 +84,52 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 		lm.removeUpdates(this);
 		super.onResume();
 	}
-	
+
 	@Override
 	public void onLocationChanged(Location location) {
 		Log.v(tag, "Location Changed");
-
 		sb = new StringBuilder(512);
-
 		noOfFixes++;
-
-		/* display some of the data in the TextView */
-
 		sb.append("No. of Fixes: ");
 		sb.append(noOfFixes);
 		sb.append('\n');
 		sb.append('\n');
-
 		sb.append("Londitude: ");
 		sb.append(location.getLongitude());
 		sb.append('\n');
-
 		sb.append("Latitude: ");
 		sb.append(location.getLatitude());
 		sb.append('\n');
-
 		sb.append("Altitiude: ");
 		sb.append(location.getAltitude());
 		sb.append('\n');
-
 		sb.append("Accuracy: ");
 		sb.append(location.getAccuracy());
 		sb.append('\n');
-
 		sb.append("Timestamp: ");
 		sb.append(location.getTime());
 		sb.append('\n');
+	}
+	
+	public boolean onTouchEvent(MapView mapView, MotionEvent event) {
+		if (event.getAction() == 1) {
+			GeoPoint p = mapView.getProjection().fromPixels((int) event.getX(), (int) event.getY());
+			Geocoder geoCoder = new Geocoder(getBaseContext(), Locale.getDefault());
+			try {
+				List<Address> addresses = geoCoder.getFromLocation(p.getLatitudeE6() / 1E6, p.getLongitudeE6() / 1E6, 1);
+				String add = "";
+				if (addresses.size() > 0) {
+					for (int i = 0; i < addresses.get(0).getMaxAddressLineIndex(); i++)
+						add += addresses.get(0).getAddressLine(i) + "\n";
+				}
+
+				Toast.makeText(getBaseContext(), add, Toast.LENGTH_SHORT).show();
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+			return true;
+		} else
+			return false;
 	}
 
 	@Override
@@ -115,11 +138,10 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 		Log.v(tag, "Disabled");
 
 		/* bring up the GPS settings */
-		Intent intent = new Intent(
-				android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+		Intent intent = new Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS);
 		startActivity(intent);
 	}
-	
+
 	@Override
 	public void onProviderEnabled(String provider) {
 		Log.v(tag, "Enabled");
@@ -133,35 +155,33 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 		switch (status) {
 		case LocationProvider.OUT_OF_SERVICE:
 			Log.v(tag, "Status Changed: Out of Service");
-			Toast.makeText(this, "Status Changed: Out of Service",
-					Toast.LENGTH_SHORT).show();
+			Toast.makeText(this, "Status Changed: Out of Service", Toast.LENGTH_SHORT).show();
 			break;
 		case LocationProvider.TEMPORARILY_UNAVAILABLE:
 			Log.v(tag, "Status Changed: Temporarily Unavailable");
-			Toast.makeText(this, "Status Changed: Temporarily Unavailable",
-					Toast.LENGTH_SHORT).show();
+			Toast.makeText(this, "Status Changed: Temporarily Unavailable", Toast.LENGTH_SHORT).show();
 			break;
 		case LocationProvider.AVAILABLE:
 			Log.v(tag, "Status Changed: Available");
-			Toast.makeText(this, "Status Changed: Available",
-					Toast.LENGTH_SHORT).show();
+			Toast.makeText(this, "Status Changed: Available", Toast.LENGTH_SHORT).show();
 			break;
 		}
 	}
 
 	@Override
 	protected void onStop() {
-		/* may as well just finish since saving the state is not important for this toy app */
+		/*
+		 * may as well just finish since saving the state is not important for this
+		 * toy app
+		 */
 		finish();
 		super.onStop();
 	}
 
-
-
-	public void displayCurrentLocation() {		
+	public void displayCurrentLocation() {
 		Location loc = null;
 		loc = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-		if(loc==null)
+		if (loc == null)
 			loc = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
 		double lat = loc.getLatitude();
 		double lng = loc.getLongitude();
@@ -176,12 +196,14 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 		listOfOverlays.clear();
 		listOfOverlays.add(mapOverlay);
 	}
-	
+
 	static class MapOverlay extends com.google.android.maps.Overlay {
 		static FriendsExplorerActivity acti;
+
 		public MapOverlay(FriendsExplorerActivity friendsExplorerActivity) {
 			acti = friendsExplorerActivity;
-    }		
+		}
+
 		@Override
 		public boolean draw(Canvas canvas, MapView mapView, boolean shadow, long when) {
 			super.draw(canvas, mapView, shadow);
