@@ -1,30 +1,21 @@
 package com.eastagile.android;
 
 import java.io.IOException;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.util.ArrayList;
+import java.io.InputStream;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
 import org.apache.http.HttpResponse;
-import org.apache.http.NameValuePair;
-import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.HttpClient;
-import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.HttpGet;
-import org.apache.http.client.methods.HttpPost;
 import org.apache.http.impl.client.DefaultHttpClient;
-import org.apache.http.message.BasicNameValuePair;
 
-import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.graphics.Canvas;
-import android.graphics.Point;
 import android.location.Address;
 import android.location.Geocoder;
 import android.location.Location;
@@ -42,12 +33,13 @@ import android.widget.LinearLayout;
 import android.widget.LinearLayout.LayoutParams;
 import android.widget.Toast;
 
+import com.eastagile.android.util.DisplayItemOverLay;
+import com.eastagile.android.util.util;
 import com.google.android.maps.GeoPoint;
 import com.google.android.maps.MapActivity;
 import com.google.android.maps.MapController;
 import com.google.android.maps.MapView;
 import com.google.android.maps.Overlay;
-import com.eastagile.android.R;
 
 public class FriendsExplorerActivity extends MapActivity implements LocationListener {
 
@@ -61,8 +53,10 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 	double lat;
 	double lng;
 	String uuid;
+	String[] arrayStringName;
+	String[] arrayStringLong;
+	String[] arrayStringLat;
 
-	/** Called when the activity is first created. */
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
@@ -71,6 +65,15 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 		mapView = (MapView) findViewById(R.id.myMap);
 		LinearLayout zoomLayout = (LinearLayout) findViewById(R.id.zoom);
 		View zoomView = mapView.getZoomControls();
+		mapView.displayZoomControls(true);
+		mapView.setStreetView(true);
+		mc = mapView.getController();
+		mapView.setOnTouchListener(new OnTouchListener() {
+			@Override
+			public boolean onTouch(View arg0, MotionEvent arg1) {
+				return onTouchEvent((MapView) arg0, arg1);
+			}
+		});
 		zoomLayout.addView(zoomView, new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
 		Location loc = null;
 		loc = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER);
@@ -78,68 +81,60 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 			loc = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
 		lat = loc.getLatitude();
 		lng = loc.getLongitude();
-//		TelephonyManager tManager = (TelephonyManager)getSystemService(Context.TELEPHONY_SERVICE);
-//		uuid = tManager.getDeviceId();
 		final TelephonyManager tm = (TelephonyManager) getBaseContext().getSystemService(Context.TELEPHONY_SERVICE);
-
-    final String tmDevice, tmSerial, tmPhone, androidId;
-    tmDevice = "" + tm.getDeviceId();
-    tmSerial = "" + tm.getSimSerialNumber();
-    androidId = "" + android.provider.Settings.Secure.getString(getContentResolver(), android.provider.Settings.Secure.ANDROID_ID);
-
-    UUID deviceUuid = new UUID(androidId.hashCode(), ((long)tmDevice.hashCode() << 32) | tmSerial.hashCode());
-    uuid = deviceUuid.toString();
+		final String tmDevice, tmSerial, tmPhone, androidId;
+		tmDevice = "" + tm.getDeviceId();
+		tmSerial = "" + tm.getSimSerialNumber();
+		androidId = "" + android.provider.Settings.Secure.getString(getContentResolver(), android.provider.Settings.Secure.ANDROID_ID);
+		UUID deviceUuid = new UUID(androidId.hashCode(), ((long) tmDevice.hashCode() << 32) | tmSerial.hashCode());
+		uuid = deviceUuid.toString();
 		logging("UUID " + uuid);
-		getStartupData();
-		displayCurrentLocation();
-		mapView.displayZoomControls(true);
-		mapView.setSatellite(true);
-		mapView.setOnTouchListener(new OnTouchListener() {
-			@Override
-			public boolean onTouch(View arg0, MotionEvent arg1) {
-				return onTouchEvent((MapView) arg0, arg1);
-			}
-		});
-		mapView.invalidate();
+		String[] data = getStartupData();
+		displayAllLocation(data);
 	}
 
-	public void getStartupData(){
+	public String[] getStartupData() {
 		HttpClient httpclient = new DefaultHttpClient();
-//		String url = "http://friendexplorer.heroku.com/user_location/update?name="+uuid+"&long="+Double.toString(lng)+"&lat="+Double.toString(lat);
-		String url = "http://192.168.25.174:3000/user_location/update?name="+uuid+"&long="+Double.toString(lng)+"&lat="+Double.toString(lat);
-		logging(url);
+		 String url = "http://friendexplorer.heroku.com/user_location/update?name="+uuid+"&long="+Double.toString(lng)+"&lat="+Double.toString(lat);
+//		String url = "http://192.168.25.174:3000/user_location/update?name=" + uuid + "&long=" + Double.toString(lng) + "&lat=" + Double.toString(lat);
 		try {
 			HttpClient client = new DefaultHttpClient();
-      HttpGet method = new HttpGet(url);
-      @SuppressWarnings("unused")
-      HttpResponse response = client.execute(method);
-		} catch (IOException e) {
-			logging("getStartupData IOException");
+			HttpGet method = new HttpGet(url);
+			HttpResponse response = client.execute(method);
+			String stringResponse = util.getResponseBody(response);
+			String[] items = stringResponse.split("<item>");
+			int numberLocation = items.length - 1;
+			if (numberLocation > 0) {
+				arrayStringName = new String[numberLocation];
+				arrayStringLong = new String[numberLocation];
+				arrayStringLat = new String[numberLocation];
+				for (int i = 1; i < numberLocation + 1; i++) {
+					arrayStringName[i - 1] = util.getValueByTag(items[i], "Name");
+					arrayStringLong[i - 1] = util.getValueByTag(items[i], "Long");
+					arrayStringLat[i - 1] = util.getValueByTag(items[i], "Lat");
+				}
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
 		}
+		return null;
 	}
+
 
 	@Override
 	protected void onResume() {
-		/*
-		 * onResume is is always called after onStart, even if the app hasn't been
-		 * paused
-		 * 
-		 * add location listener and request updates every 1000ms or 10m
-		 */
 		lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 10f, this);
 		super.onResume();
 	}
 
 	@Override
 	protected void onPause() {
-		/* GPS, as it turns out, consumes battery like crazy */
 		lm.removeUpdates(this);
 		super.onResume();
 	}
 
 	@Override
 	public void onLocationChanged(Location location) {
-		Log.v(tag, "Location Changed");
 		sb = new StringBuilder(512);
 		noOfFixes++;
 		sb.append("No. of Fixes: ");
@@ -186,10 +181,6 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 
 	@Override
 	public void onProviderDisabled(String provider) {
-		/* this is called if/when the GPS is disabled in settings */
-		Log.v(tag, "Disabled");
-
-		/* bring up the GPS settings */
 		Intent intent = new Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS);
 		startActivity(intent);
 	}
@@ -198,12 +189,10 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 	public void onProviderEnabled(String provider) {
 		Log.v(tag, "Enabled");
 		Toast.makeText(this, "GPS Enabled", Toast.LENGTH_SHORT).show();
-
 	}
 
 	@Override
 	public void onStatusChanged(String provider, int status, Bundle extras) {
-		/* This is called when the GPS status alters */
 		switch (status) {
 		case LocationProvider.OUT_OF_SERVICE:
 			Log.v(tag, "Status Changed: Out of Service");
@@ -222,41 +211,39 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 
 	@Override
 	protected void onStop() {
-		/*
-		 * may as well just finish since saving the state is not important for this
-		 * toy app
-		 */
 		finish();
 		super.onStop();
 	}
 
-	public void displayCurrentLocation() {
-		mc = mapView.getController();
-		p = new GeoPoint((int) (lat * 1E6), (int) (lng * 1E6));
-		mc.animateTo(p);
-		mc.setZoom(18);
-		MapOverlay mapOverlay = new MapOverlay(this);
-		List<Overlay> listOfOverlays = mapView.getOverlays();
-		listOfOverlays.clear();
-		listOfOverlays.add(mapOverlay);
+	public void displayAllLocation(String[] data) {
+		try {
+			List<Overlay> listOfOverlays = mapView.getOverlays();
+			listOfOverlays.clear();
+			Bitmap bit = getBitmapFromAsset("pushpinFriend.gif");
+			for (int i = 0; i < arrayStringLong.length; i++) {
+				double lat = Double.parseDouble(arrayStringLat[i]);
+				double lng = Double.parseDouble(arrayStringLong[i]);
+				GeoPoint geoPoint = new GeoPoint((int) (lat * 1E6), (int) (lng * 1E6));
+				DisplayItemOverLay mapOverlayFriend = new DisplayItemOverLay(this,geoPoint,bit);
+				listOfOverlays.add(mapOverlayFriend);
+			}			
+			p = new GeoPoint((int) (lat * 1E6), (int) (lng * 1E6));
+			bit = getBitmapFromAsset("pushpin.gif");
+			DisplayItemOverLay mapOverlayMe = new DisplayItemOverLay(this,p,bit);
+			listOfOverlays.add(mapOverlayMe);
+			mc.animateTo(p);			
+			mc.setZoom(17);
+			mapView.invalidate();
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
 	}
 
-	static class MapOverlay extends com.google.android.maps.Overlay {
-		static FriendsExplorerActivity acti;
-
-		public MapOverlay(FriendsExplorerActivity friendsExplorerActivity) {
-			acti = friendsExplorerActivity;
-		}
-
-		@Override
-		public boolean draw(Canvas canvas, MapView mapView, boolean shadow, long when) {
-			super.draw(canvas, mapView, shadow);
-			Point screenPts = new Point();
-			mapView.getProjection().toPixels(p, screenPts);
-			Bitmap bmp = BitmapFactory.decodeResource(acti.getResources(), R.drawable.pushpin);
-			canvas.drawBitmap(bmp, screenPts.x, screenPts.y - 50, null);
-			return true;
-		}
+	private Bitmap getBitmapFromAsset(String strName) throws IOException {
+		AssetManager assetManager = getAssets();
+		InputStream istr = assetManager.open(strName);
+		Bitmap bitmap = BitmapFactory.decodeStream(istr);
+		return bitmap;
 	}
 
 	@Override
