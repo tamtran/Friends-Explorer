@@ -220,13 +220,15 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 			List<Overlay> listOfOverlays = mapView.getOverlays();
 			listOfOverlays.clear();
 			Bitmap bit = getBitmapFromAsset("pushpinFriend.gif");
-			for (int i = 0; i < arrayStringLong.length; i++) {
-				double lat = Double.parseDouble(arrayStringLat[i]);
-				double lng = Double.parseDouble(arrayStringLong[i]);
-				GeoPoint geoPoint = new GeoPoint((int) (lat * 1E6), (int) (lng * 1E6));
-				DisplayItemOverLay mapOverlayFriend = new DisplayItemOverLay(this,geoPoint,bit);
-				listOfOverlays.add(mapOverlayFriend);
-			}			
+			if (arrayStringLong != null) {
+	      for (int i = 0; i < arrayStringLong.length; i++) {
+		      double lat = Double.parseDouble(arrayStringLat[i]);
+		      double lng = Double.parseDouble(arrayStringLong[i]);
+		      GeoPoint geoPoint = new GeoPoint((int) (lat * 1E6), (int) (lng * 1E6));
+		      DisplayItemOverLay mapOverlayFriend = new DisplayItemOverLay(this, geoPoint, bit);
+		      listOfOverlays.add(mapOverlayFriend);
+	      }
+      }
 			p = new GeoPoint((int) (lat * 1E6), (int) (lng * 1E6));
 			bit = getBitmapFromAsset("pushpin.gif");
 			DisplayItemOverLay mapOverlayMe = new DisplayItemOverLay(this,p,bit);
