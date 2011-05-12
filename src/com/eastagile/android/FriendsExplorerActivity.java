@@ -11,7 +11,9 @@ import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.DefaultHttpClient;
 
+import android.app.AlertDialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.res.AssetManager;
 import android.graphics.Bitmap;
@@ -22,10 +24,14 @@ import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.location.LocationProvider;
+import android.os.AsyncTask;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.telephony.TelephonyManager;
 import android.util.Log;
 import android.view.KeyEvent;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.View.OnTouchListener;
@@ -43,98 +49,174 @@ import com.google.android.maps.Overlay;
 
 public class FriendsExplorerActivity extends MapActivity implements LocationListener {
 
+	int REQUEST_GPS_CODE = 0;
 	static final String tag = "Test"; // for Log
 	static MapView mapView;
-	static MapController mc;
-	static GeoPoint p;
-	static LocationManager lm;
+	static MapController mapController;
+	static GeoPoint myCurrentGeoPoint;
+	static LocationManager locationManager;
 	StringBuilder sb;
 	int noOfFixes = 0;
-	double lat;
-	double lng;
+	double myCurrentLat;
+	double myCurrentLong;
 	String uuid;
 	String[] arrayStringName;
 	String[] arrayStringLong;
 	String[] arrayStringLat;
+	List<Overlay> listOfOverlays;
+	DisplayLocationTask displayLocationTask;
+	Boolean continueRunning = true;
+	private static final int SETTING = 0;
+	private static final int ALERT = 1;
+	private static final int ABOUT = 2;
+	private static final int QUIT = 3;
 
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.main);
-		lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+//		launchGPSOptions();
 		mapView = (MapView) findViewById(R.id.myMap);
 		LinearLayout zoomLayout = (LinearLayout) findViewById(R.id.zoom);
 		View zoomView = mapView.getZoomControls();
 		mapView.displayZoomControls(true);
 		mapView.setStreetView(true);
-		mc = mapView.getController();
+		mapController = mapView.getController();
+		mapController.setZoom(14);
 		mapView.setOnTouchListener(new OnTouchListener() {
 			@Override
 			public boolean onTouch(View arg0, MotionEvent arg1) {
 				return onTouchEvent((MapView) arg0, arg1);
 			}
 		});
+		listOfOverlays = mapView.getOverlays();
 		zoomLayout.addView(zoomView, new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
-		Location loc = null;
-		loc = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-		if (loc == null)
-			loc = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
-		lat = loc.getLatitude();
-		lng = loc.getLongitude();
 		final TelephonyManager tm = (TelephonyManager) getBaseContext().getSystemService(Context.TELEPHONY_SERVICE);
-		final String tmDevice, tmSerial, tmPhone, androidId;
+		final String tmDevice, tmSerial, androidId;
 		tmDevice = "" + tm.getDeviceId();
 		tmSerial = "" + tm.getSimSerialNumber();
 		androidId = "" + android.provider.Settings.Secure.getString(getContentResolver(), android.provider.Settings.Secure.ANDROID_ID);
 		UUID deviceUuid = new UUID(androidId.hashCode(), ((long) tmDevice.hashCode() << 32) | tmSerial.hashCode());
 		uuid = deviceUuid.toString();
 		logging("UUID " + uuid);
-		String[] data = getStartupData();
-		displayAllLocation(data);
-	}
-
-	public String[] getStartupData() {
-		HttpClient httpclient = new DefaultHttpClient();
-		 String url = "http://friendexplorer.heroku.com/user_location/update?name="+uuid+"&long="+Double.toString(lng)+"&lat="+Double.toString(lat);
-//		String url = "http://192.168.25.174:3000/user_location/update?name=" + uuid + "&long=" + Double.toString(lng) + "&lat=" + Double.toString(lat);
-		try {
-			HttpClient client = new DefaultHttpClient();
-			HttpGet method = new HttpGet(url);
-			HttpResponse response = client.execute(method);
-			String stringResponse = util.getResponseBody(response);
-			String[] items = stringResponse.split("<item>");
-			int numberLocation = items.length - 1;
-			if (numberLocation > 0) {
-				arrayStringName = new String[numberLocation];
-				arrayStringLong = new String[numberLocation];
-				arrayStringLat = new String[numberLocation];
-				for (int i = 1; i < numberLocation + 1; i++) {
-					arrayStringName[i - 1] = util.getValueByTag(items[i], "Name");
-					arrayStringLong[i - 1] = util.getValueByTag(items[i], "Long");
-					arrayStringLat[i - 1] = util.getValueByTag(items[i], "Lat");
-				}
-			}
-		} catch (Exception e) {
-			e.printStackTrace();
+		locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+		locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 100, 10f, this);
+		if (!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+			buildAlertMessageNoGps();
+		}else{
+			Location loc = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+			myCurrentLat = loc.getLatitude();
+			myCurrentLong = loc.getLongitude();
+			displayLocationTask = new DisplayLocationTask();
+			displayLocationTask.execute();
 		}
-		return null;
 	}
 
+	private void buildAlertMessageNoGps() {
+		final AlertDialog.Builder builder = new AlertDialog.Builder(this);
+		builder.setMessage("Your GPS seems to be disabled, you MUST enable it to continue?").setCancelable(false)
+		    .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
+			    public void onClick(@SuppressWarnings("unused") final DialogInterface dialog, @SuppressWarnings("unused") final int id) {
+				    launchGPSOptions();
+			    }
+		    });
+		final AlertDialog alert = builder.create();
+		alert.show();
+	}
+
+	protected void launchGPSOptions() {
+		// TODO Auto-generated method stub
+		Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+		startActivityForResult(intent,REQUEST_GPS_CODE);
+	}
 
 	@Override
-	protected void onResume() {
-		lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 10f, this);
-		super.onResume();
+	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+		if (requestCode == REQUEST_GPS_CODE && resultCode == 0) {
+			if (!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+				buildAlertMessageNoGps();
+			}else{
+				Location loc = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+				myCurrentLat = loc.getLatitude();
+				myCurrentLong = loc.getLongitude();
+				displayLocationTask = new DisplayLocationTask();
+				displayLocationTask.execute();
+			}
+		}
 	}
 
-	@Override
-	protected void onPause() {
-		lm.removeUpdates(this);
-		super.onResume();
+	public class DisplayLocationTask extends AsyncTask<Void, Integer, String> {
+
+		@Override
+		protected void onProgressUpdate(Integer... progress) {
+			mapController.animateTo(myCurrentGeoPoint);
+			mapView.invalidate();
+		}
+
+		@Override
+		public void onPreExecute() {
+		}
+
+		@Override
+		protected void onCancelled() {
+			super.onCancelled();
+		}
+
+		@Override
+		public void onPostExecute(String photoHtml) {
+		}
+
+		@Override
+		protected String doInBackground(Void... arg0) {
+			 String url = "http://friendexplorer.heroku.com/user_location/update?name="+uuid+"&long="+Double.toString(myCurrentLong)+"&lat="+Double.toString(myCurrentLat);
+//			String url = "http://192.168.25.174:3000/user_location/update?name=" + uuid + "&long=" + Double.toString(myCurrentLong) + "&lat=" + Double.toString(myCurrentLat);
+			try {
+				HttpClient client = new DefaultHttpClient();
+				HttpGet method = new HttpGet(url);
+				HttpResponse response = client.execute(method);
+				String stringResponse = util.getResponseBody(response);
+				String[] items = stringResponse.split("<item>");
+				int numberLocation = items.length - 1;
+				if (numberLocation > 0) {
+					arrayStringName = new String[numberLocation];
+					arrayStringLong = new String[numberLocation];
+					arrayStringLat = new String[numberLocation];
+					for (int i = 1; i < numberLocation + 1; i++) {
+						arrayStringName[i - 1] = util.getValueByTag(items[i], "Name");
+						arrayStringLong[i - 1] = util.getValueByTag(items[i], "Long");
+						arrayStringLat[i - 1] = util.getValueByTag(items[i], "Lat");
+					}
+				}
+				listOfOverlays.clear();
+				Bitmap bit = getBitmapFromAsset("pushpinFriend.gif");
+				if (arrayStringLong != null) {
+					for (int i = 0; i < arrayStringLong.length; i++) {
+						double lat = Double.parseDouble(arrayStringLat[i]);
+						double lng = Double.parseDouble(arrayStringLong[i]);
+						GeoPoint geoPoint = new GeoPoint((int) (lat * 1E6), (int) (lng * 1E6));
+						DisplayItemOverLay mapOverlayFriend = new DisplayItemOverLay(FriendsExplorerActivity.this, geoPoint, bit);
+						listOfOverlays.add(mapOverlayFriend);
+					}
+				}
+				myCurrentGeoPoint = new GeoPoint((int) (myCurrentLat * 1E6), (int) (myCurrentLong * 1E6));
+				bit = getBitmapFromAsset("pushpin.gif");
+				DisplayItemOverLay mapOverlayMe = new DisplayItemOverLay(FriendsExplorerActivity.this, myCurrentGeoPoint, bit);
+				listOfOverlays.add(mapOverlayMe);
+				publishProgress(0);
+			} catch (Exception ex) {
+				ex.printStackTrace();
+				// throw new RuntimeException(ex);
+			}
+			return url;
+		}
 	}
+
 
 	@Override
 	public void onLocationChanged(Location location) {
+		Location loc = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+		myCurrentLat = loc.getLatitude();
+		myCurrentLong = loc.getLongitude();
 		sb = new StringBuilder(512);
 		noOfFixes++;
 		sb.append("No. of Fixes: ");
@@ -180,18 +262,6 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 	}
 
 	@Override
-	public void onProviderDisabled(String provider) {
-		Intent intent = new Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS);
-		startActivity(intent);
-	}
-
-	@Override
-	public void onProviderEnabled(String provider) {
-		Log.v(tag, "Enabled");
-		Toast.makeText(this, "GPS Enabled", Toast.LENGTH_SHORT).show();
-	}
-
-	@Override
 	public void onStatusChanged(String provider, int status, Bundle extras) {
 		switch (status) {
 		case LocationProvider.OUT_OF_SERVICE:
@@ -210,35 +280,41 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 	}
 
 	@Override
-	protected void onStop() {
-		finish();
-		super.onStop();
+	public boolean onCreateOptionsMenu(Menu menu) {
+		menu.add(0, SETTING, 0, "Settings");
+		menu.add(0, ALERT, 0, "Alert");
+		menu.add(0, ABOUT, 0, "About");
+		menu.add(0, QUIT, 0, "Quit");
+		return true;
 	}
 
-	public void displayAllLocation(String[] data) {
-		try {
-			List<Overlay> listOfOverlays = mapView.getOverlays();
-			listOfOverlays.clear();
-			Bitmap bit = getBitmapFromAsset("pushpinFriend.gif");
-			if (arrayStringLong != null) {
-	      for (int i = 0; i < arrayStringLong.length; i++) {
-		      double lat = Double.parseDouble(arrayStringLat[i]);
-		      double lng = Double.parseDouble(arrayStringLong[i]);
-		      GeoPoint geoPoint = new GeoPoint((int) (lat * 1E6), (int) (lng * 1E6));
-		      DisplayItemOverLay mapOverlayFriend = new DisplayItemOverLay(this, geoPoint, bit);
-		      listOfOverlays.add(mapOverlayFriend);
-	      }
-      }
-			p = new GeoPoint((int) (lat * 1E6), (int) (lng * 1E6));
-			bit = getBitmapFromAsset("pushpin.gif");
-			DisplayItemOverLay mapOverlayMe = new DisplayItemOverLay(this,p,bit);
-			listOfOverlays.add(mapOverlayMe);
-			mc.animateTo(p);			
-			mc.setZoom(17);
-			mapView.invalidate();
-		} catch (Exception e) {
-			e.printStackTrace();
+	@Override
+	public boolean onOptionsItemSelected(MenuItem item) {
+		switch (item.getItemId()) {
+		case SETTING:
+			buildAlertMessageNoGps();
+			break;
+		case ALERT:
+			buildAlertMessageNoGps();
+			break;
+		case ABOUT:
+			buildAlertMessageNoGps();
+			break;
+		case QUIT:
+			finish();
+		default:
+			break;
 		}
+		return true;
+	}
+
+	
+	@Override
+	protected void onDestroy() {
+		if (displayLocationTask != null) {
+			displayLocationTask.cancel(true);
+		}
+		super.onDestroy();
 	}
 
 	private Bitmap getBitmapFromAsset(String strName) throws IOException {
@@ -271,4 +347,15 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 		Log.d(tag, input);
 	}
 
+	@Override
+  public void onProviderDisabled(String s) {
+	  // TODO Auto-generated method stub
+	  
+  }
+
+	@Override
+  public void onProviderEnabled(String s) {
+	  // TODO Auto-generated method stub
+	  
+  }
 }
