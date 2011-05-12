@@ -51,6 +51,8 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 
 	int REQUEST_GPS_CODE = 0;
 	static final String tag = "Test"; // for Log
+	// static final String HOST = "http://friendexplorer.heroku.com";
+	static final String HOST = "http://192.168.25.174:3000";
 	static MapView mapView;
 	static MapController mapController;
 	static GeoPoint myCurrentGeoPoint;
@@ -66,7 +68,6 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 	List<Overlay> listOfOverlays;
 	DisplayLocationTask displayLocationTask;
 	Boolean continueRunning = true;
-	private static final int SETTING = 0;
 	private static final int ALERT = 1;
 	private static final int ABOUT = 2;
 	private static final int QUIT = 3;
@@ -75,7 +76,7 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 	public void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.main);
-//		launchGPSOptions();
+		// launchGPSOptions();
 		mapView = (MapView) findViewById(R.id.myMap);
 		LinearLayout zoomLayout = (LinearLayout) findViewById(R.id.zoom);
 		View zoomView = mapView.getZoomControls();
@@ -103,7 +104,7 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 		locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 100, 10f, this);
 		if (!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
 			buildAlertMessageNoGps();
-		}else{
+		} else {
 			Location loc = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
 			myCurrentLat = loc.getLatitude();
 			myCurrentLong = loc.getLongitude();
@@ -127,7 +128,7 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 	protected void launchGPSOptions() {
 		// TODO Auto-generated method stub
 		Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
-		startActivityForResult(intent,REQUEST_GPS_CODE);
+		startActivityForResult(intent, REQUEST_GPS_CODE);
 	}
 
 	@Override
@@ -135,7 +136,7 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 		if (requestCode == REQUEST_GPS_CODE && resultCode == 0) {
 			if (!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
 				buildAlertMessageNoGps();
-			}else{
+			} else {
 				Location loc = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
 				myCurrentLat = loc.getLatitude();
 				myCurrentLong = loc.getLongitude();
@@ -168,8 +169,7 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 
 		@Override
 		protected String doInBackground(Void... arg0) {
-			 String url = "http://friendexplorer.heroku.com/user_location/update?name="+uuid+"&long="+Double.toString(myCurrentLong)+"&lat="+Double.toString(myCurrentLat);
-//			String url = "http://192.168.25.174:3000/user_location/update?name=" + uuid + "&long=" + Double.toString(myCurrentLong) + "&lat=" + Double.toString(myCurrentLat);
+			String url = HOST + "/user_location/update?name=" + uuid + "&long=" + Double.toString(myCurrentLong) + "&lat=" + Double.toString(myCurrentLat);
 			try {
 				HttpClient client = new DefaultHttpClient();
 				HttpGet method = new HttpGet(url);
@@ -210,7 +210,6 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 			return url;
 		}
 	}
-
 
 	@Override
 	public void onLocationChanged(Location location) {
@@ -281,7 +280,6 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 
 	@Override
 	public boolean onCreateOptionsMenu(Menu menu) {
-		menu.add(0, SETTING, 0, "Settings");
 		menu.add(0, ALERT, 0, "Alert");
 		menu.add(0, ABOUT, 0, "About");
 		menu.add(0, QUIT, 0, "Quit");
@@ -291,14 +289,28 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 	@Override
 	public boolean onOptionsItemSelected(MenuItem item) {
 		switch (item.getItemId()) {
-		case SETTING:
-			buildAlertMessageNoGps();
-			break;
 		case ALERT:
-			buildAlertMessageNoGps();
+			final CharSequence[] items = { "Traffic", "Cop"};
+			final AlertDialog.Builder builderSelection = new AlertDialog.Builder(this);
+			builderSelection.setTitle("Pick an alert");
+			builderSelection.setItems(items, new DialogInterface.OnClickListener() {
+				public void onClick(DialogInterface dialogInterface, int item) {
+					sendAlertToServer(items[item]);
+					return;
+				}
+			});
+			builderSelection.create().show();
 			break;
 		case ABOUT:
-			buildAlertMessageNoGps();
+			final AlertDialog.Builder builder = new AlertDialog.Builder(this);
+			builder.setMessage("A product of Esat Agile company \n http://www.eastagile.com ").setCancelable(false)
+			    .setPositiveButton("Close", new DialogInterface.OnClickListener() {
+				    public void onClick(@SuppressWarnings("unused") final DialogInterface dialog, @SuppressWarnings("unused") final int id) {
+					    return;
+				    }
+			    });
+			final AlertDialog alert = builder.create();
+			alert.show();
 			break;
 		case QUIT:
 			finish();
@@ -308,7 +320,19 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 		return true;
 	}
 
-	
+	protected void sendAlertToServer(CharSequence charSequence) {
+		String url = HOST + "/alert/receive?name=" + uuid + "&long=" + Double.toString(myCurrentLong) + "&lat=" + Double.toString(myCurrentLat)
+									+"&type="+charSequence.toString();
+		logging(url);
+		try {
+			HttpClient client = new DefaultHttpClient();
+			HttpGet method = new HttpGet(url);
+			HttpResponse response = client.execute(method);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+
 	@Override
 	protected void onDestroy() {
 		if (displayLocationTask != null) {
@@ -348,14 +372,14 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 	}
 
 	@Override
-  public void onProviderDisabled(String s) {
-	  // TODO Auto-generated method stub
-	  
-  }
+	public void onProviderDisabled(String s) {
+		// TODO Auto-generated method stub
+
+	}
 
 	@Override
-  public void onProviderEnabled(String s) {
-	  // TODO Auto-generated method stub
-	  
-  }
+	public void onProviderEnabled(String s) {
+		// TODO Auto-generated method stub
+
+	}
 }
