@@ -15,6 +15,7 @@ import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -68,6 +69,7 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 	List<Overlay> listOfOverlays;
 	DisplayLocationTask displayLocationTask;
 	Boolean continueRunning = true;
+	private static final int SETTING = 0;
 	private static final int ALERT = 1;
 	private static final int ABOUT = 2;
 	private static final int QUIT = 3;
@@ -280,6 +282,7 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 
 	@Override
 	public boolean onCreateOptionsMenu(Menu menu) {
+		menu.add(0, SETTING, 0, "Setting");
 		menu.add(0, ALERT, 0, "Alert");
 		menu.add(0, ABOUT, 0, "About");
 		menu.add(0, QUIT, 0, "Quit");
@@ -289,24 +292,50 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 	@Override
 	public boolean onOptionsItemSelected(MenuItem item) {
 		switch (item.getItemId()) {
-		case ALERT:
-			final CharSequence[] items = { "Traffic", "Cop"};
-			final AlertDialog.Builder builderSelection = new AlertDialog.Builder(this);
-			builderSelection.setTitle("Pick an alert");
-			builderSelection.setItems(items, new DialogInterface.OnClickListener() {
-				public void onClick(DialogInterface dialogInterface, int item) {
-					sendAlertToServer(items[item]);
-					return;
+		case SETTING:
+			SharedPreferences preSetting = getPreferences(MODE_PRIVATE);
+			final SharedPreferences.Editor edSetting = preSetting.edit();
+			int itemSelectedSetting = preSetting.getInt("FriendsExplorer-Setting",0);
+			final CharSequence[] alertSetting = { "Enable alert", "Disable alert" };
+			AlertDialog.Builder settingAlertDialog = new AlertDialog.Builder(this);
+			settingAlertDialog.setTitle("Setting");
+			settingAlertDialog.setSingleChoiceItems(alertSetting, itemSelectedSetting, new DialogInterface.OnClickListener() {
+				public void onClick(DialogInterface dialog, int item) {
+					if (item == 0) {
+
+					} else {
+
+					}
+					edSetting.putInt("FriendsExplorer-Setting", item);
+					edSetting.commit();
+					dialog.cancel();
 				}
 			});
-			builderSelection.create().show();
+			settingAlertDialog.create().show();
+			break;
+		case ALERT:
+			SharedPreferences preAlert = getPreferences(MODE_PRIVATE);
+			final SharedPreferences.Editor edAlert = preAlert.edit();
+			int itemSelectedAlert = preAlert.getInt("FriendsExplorer-Alert",0);
+			final CharSequence[] alertType = { "Traffic", "Cop" };
+			AlertDialog.Builder alertTypeDialog = new AlertDialog.Builder(this);
+			alertTypeDialog.setTitle("Alert type");
+			alertTypeDialog.setSingleChoiceItems(alertType, itemSelectedAlert, new DialogInterface.OnClickListener() {
+				public void onClick(DialogInterface dialog, int item) {
+					sendAlertToServer(alertType[item]);
+					edAlert.putInt("FriendsExplorer-Alert", item);
+					edAlert.commit();
+					dialog.cancel();
+				}
+			});
+			alertTypeDialog.create().show();
 			break;
 		case ABOUT:
 			final AlertDialog.Builder builder = new AlertDialog.Builder(this);
 			builder.setMessage("A product of Esat Agile company \n http://www.eastagile.com ").setCancelable(false)
 			    .setPositiveButton("Close", new DialogInterface.OnClickListener() {
 				    public void onClick(@SuppressWarnings("unused") final DialogInterface dialog, @SuppressWarnings("unused") final int id) {
-					    return;
+					    dialog.cancel();
 				    }
 			    });
 			final AlertDialog alert = builder.create();
@@ -321,8 +350,8 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 	}
 
 	protected void sendAlertToServer(CharSequence charSequence) {
-		String url = HOST + "/alert/receive?name=" + uuid + "&long=" + Double.toString(myCurrentLong) + "&lat=" + Double.toString(myCurrentLat)
-									+"&type="+charSequence.toString();
+		String url = HOST + "/alert/receive?name=" + uuid + "&long=" + Double.toString(myCurrentLong) + "&lat=" + Double.toString(myCurrentLat) + "&type="
+		    + charSequence.toString();
 		logging(url);
 		try {
 			HttpClient client = new DefaultHttpClient();
