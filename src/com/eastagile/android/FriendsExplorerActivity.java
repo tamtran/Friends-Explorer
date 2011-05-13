@@ -40,6 +40,7 @@ import android.widget.LinearLayout;
 import android.widget.LinearLayout.LayoutParams;
 import android.widget.Toast;
 
+import com.eastagile.android.service.AlertService;
 import com.eastagile.android.util.DisplayItemOverLay;
 import com.eastagile.android.util.util;
 import com.google.android.maps.GeoPoint;
@@ -102,6 +103,7 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 		UUID deviceUuid = new UUID(androidId.hashCode(), ((long) tmDevice.hashCode() << 32) | tmSerial.hashCode());
 		uuid = deviceUuid.toString();
 		logging("UUID " + uuid);
+		startService(new Intent(AlertService.class.getName()));
 		locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 		locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 100, 10f, this);
 		if (!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
@@ -114,7 +116,7 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 			displayLocationTask.execute();
 		}
 	}
-
+	
 	private void buildAlertMessageNoGps() {
 		final AlertDialog.Builder builder = new AlertDialog.Builder(this);
 		builder.setMessage("Your GPS seems to be disabled, you MUST enable it to continue?").setCancelable(false)
@@ -152,8 +154,7 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 
 		@Override
 		protected void onProgressUpdate(Integer... progress) {
-			mapController.animateTo(myCurrentGeoPoint);
-			mapView.invalidate();
+			updateMyLocation();
 		}
 
 		@Override
@@ -215,9 +216,10 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 
 	@Override
 	public void onLocationChanged(Location location) {
-		Location loc = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-		myCurrentLat = loc.getLatitude();
-		myCurrentLong = loc.getLongitude();
+		myCurrentLat = location.getLatitude();
+		myCurrentLong = location.getLongitude();
+		myCurrentGeoPoint = new GeoPoint((int) (myCurrentLat * 1E6), (int) (myCurrentLong * 1E6));
+		updateMyLocation();
 		sb = new StringBuilder(512);
 		noOfFixes++;
 		sb.append("No. of Fixes: ");
@@ -239,6 +241,11 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 		sb.append("Timestamp: ");
 		sb.append(location.getTime());
 		sb.append('\n');
+	}
+
+	public void updateMyLocation() {
+		mapController.animateTo(myCurrentGeoPoint);
+		mapView.invalidate();
 	}
 
 	public boolean onTouchEvent(MapView mapView, MotionEvent event) {
@@ -295,12 +302,13 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 		case SETTING:
 			SharedPreferences preSetting = getPreferences(MODE_PRIVATE);
 			final SharedPreferences.Editor edSetting = preSetting.edit();
-			int itemSelectedSetting = preSetting.getInt("FriendsExplorer-Setting",0);
+			int itemSelectedSetting = preSetting.getInt("FriendsExplorer-Setting", 0);
 			final CharSequence[] alertSetting = { "Enable alert", "Disable alert" };
 			AlertDialog.Builder settingAlertDialog = new AlertDialog.Builder(this);
 			settingAlertDialog.setTitle("Setting");
 			settingAlertDialog.setSingleChoiceItems(alertSetting, itemSelectedSetting, new DialogInterface.OnClickListener() {
 				public void onClick(DialogInterface dialog, int item) {
+					dialog.cancel();
 					if (item == 0) {
 
 					} else {
@@ -308,7 +316,6 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 					}
 					edSetting.putInt("FriendsExplorer-Setting", item);
 					edSetting.commit();
-					dialog.cancel();
 				}
 			});
 			settingAlertDialog.create().show();
@@ -316,16 +323,16 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 		case ALERT:
 			SharedPreferences preAlert = getPreferences(MODE_PRIVATE);
 			final SharedPreferences.Editor edAlert = preAlert.edit();
-			int itemSelectedAlert = preAlert.getInt("FriendsExplorer-Alert",0);
+			int itemSelectedAlert = preAlert.getInt("FriendsExplorer-Alert", 0);
 			final CharSequence[] alertType = { "Traffic", "Cop" };
 			AlertDialog.Builder alertTypeDialog = new AlertDialog.Builder(this);
 			alertTypeDialog.setTitle("Alert type");
 			alertTypeDialog.setSingleChoiceItems(alertType, itemSelectedAlert, new DialogInterface.OnClickListener() {
 				public void onClick(DialogInterface dialog, int item) {
+					dialog.cancel();
 					sendAlertToServer(alertType[item]);
 					edAlert.putInt("FriendsExplorer-Alert", item);
 					edAlert.commit();
-					dialog.cancel();
 				}
 			});
 			alertTypeDialog.create().show();
@@ -338,8 +345,7 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 					    dialog.cancel();
 				    }
 			    });
-			final AlertDialog alert = builder.create();
-			alert.show();
+			builder.create().show();
 			break;
 		case QUIT:
 			finish();
@@ -399,7 +405,7 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 	public static void logging(String input) {
 		Log.d(tag, input);
 	}
-
+		
 	@Override
 	public void onProviderDisabled(String s) {
 		// TODO Auto-generated method stub
