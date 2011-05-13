@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
 import java.util.Locale;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.UUID;
 
 import org.apache.http.HttpResponse;
@@ -50,11 +52,10 @@ import com.google.android.maps.MapView;
 import com.google.android.maps.Overlay;
 
 public class FriendsExplorerActivity extends MapActivity implements LocationListener {
-
 	int REQUEST_GPS_CODE = 0;
 	static final String tag = "Test"; // for Log
-	// static final String HOST = "http://friendexplorer.heroku.com";
-	static final String HOST = "http://192.168.25.174:3000";
+	 static final String HOST = "http://friendexplorer.heroku.com";
+//	static final String HOST = "http://192.168.25.174:3000";
 	static MapView mapView;
 	static MapController mapController;
 	static GeoPoint myCurrentGeoPoint;
@@ -74,6 +75,7 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 	private static final int ALERT = 1;
 	private static final int ABOUT = 2;
 	private static final int QUIT = 3;
+	Timer timer;
 
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
@@ -106,16 +108,28 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 		startService(new Intent(AlertService.class.getName()));
 		locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 		locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 100, 10f, this);
+		displayLocationTask = new DisplayLocationTask();
+		timer = new Timer("UpdateOtherLocationTimer");
 		if (!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
 			buildAlertMessageNoGps();
 		} else {
 			Location loc = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
 			myCurrentLat = loc.getLatitude();
 			myCurrentLong = loc.getLongitude();
+			timer.schedule(updateTask, 100L, 5 * 60 * 1000L);
+		}
+	}
+	
+	private TimerTask updateTask = new TimerTask() {
+		@Override
+		public void run() {
+			if (displayLocationTask != null) {
+				displayLocationTask.cancel(true);
+			}
 			displayLocationTask = new DisplayLocationTask();
 			displayLocationTask.execute();
 		}
-	}
+	};
 	
 	private void buildAlertMessageNoGps() {
 		final AlertDialog.Builder builder = new AlertDialog.Builder(this);
@@ -130,7 +144,6 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 	}
 
 	protected void launchGPSOptions() {
-		// TODO Auto-generated method stub
 		Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
 		startActivityForResult(intent, REQUEST_GPS_CODE);
 	}
@@ -144,8 +157,7 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 				Location loc = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
 				myCurrentLat = loc.getLatitude();
 				myCurrentLong = loc.getLongitude();
-				displayLocationTask = new DisplayLocationTask();
-				displayLocationTask.execute();
+				timer.schedule(updateTask, 100L, 5 * 60 * 1000L);
 			}
 		}
 	}
@@ -172,6 +184,7 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 
 		@Override
 		protected String doInBackground(Void... arg0) {
+			logging("doInBackground");
 			String url = HOST + "/user_location/update?name=" + uuid + "&long=" + Double.toString(myCurrentLong) + "&lat=" + Double.toString(myCurrentLat);
 			try {
 				HttpClient client = new DefaultHttpClient();
@@ -208,7 +221,6 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 				publishProgress(0);
 			} catch (Exception ex) {
 				ex.printStackTrace();
-				// throw new RuntimeException(ex);
 			}
 			return url;
 		}
@@ -259,7 +271,6 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 					for (int i = 0; i < addresses.get(0).getMaxAddressLineIndex(); i++)
 						add += addresses.get(0).getAddressLine(i) + "\n";
 				}
-
 				Toast.makeText(getBaseContext(), add, Toast.LENGTH_SHORT).show();
 			} catch (IOException e) {
 				e.printStackTrace();
@@ -373,6 +384,8 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 		if (displayLocationTask != null) {
 			displayLocationTask.cancel(true);
 		}
+		timer.cancel();
+		timer = null;
 		super.onDestroy();
 	}
 
@@ -408,13 +421,9 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 		
 	@Override
 	public void onProviderDisabled(String s) {
-		// TODO Auto-generated method stub
-
 	}
 
 	@Override
 	public void onProviderEnabled(String s) {
-		// TODO Auto-generated method stub
-
 	}
 }
