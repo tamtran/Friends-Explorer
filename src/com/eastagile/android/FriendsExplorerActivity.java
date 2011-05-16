@@ -55,11 +55,14 @@ import com.google.android.maps.Overlay;
 
 public class FriendsExplorerActivity extends MapActivity implements LocationListener {
 	int REQUEST_GPS_CODE = 0;
-	static final String tag = "Test"; // for Log
-	public static final String PREFERENCE_NAME = "Preference Setting for Friends Explorer"; // for
-	                                                                                        // Log
-//	static final String HOST = "http://friendexplorer.heroku.com";
-	 static final String HOST = "http://192.168.25.174:3000";
+	public static final String tag = "Test";
+	public static final String SETTING_DISABLE_ALERT = "Traffic Alert-Setting";
+	public static final String SETTING_ALERT_TYPE = "Traffic Alert-Alert-Type";
+	public static final String SETTING_ABOUT = "A product of East Agile company \n http://www.eastagile.com ";
+	
+	public static final String PREFERENCE_NAME = "Preference Setting for Traffic Alert";
+	// static final String HOST = "http://friendexplorer.heroku.com";
+	static final String HOST = "http://192.168.25.174:3000";
 	static MapView mapView;
 	static MapController mapController;
 	static GeoPoint myCurrentGeoPoint;
@@ -121,7 +124,8 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 	}
 
 	private void checkLocationAndAction() {
-		if ((locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) && (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER))&&(haveInternet(this))) {
+		if ((locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) && (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER))
+		    && (haveInternet(this))) {
 			Location loc = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
 			if (loc == null) {
 				loc = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
@@ -319,7 +323,7 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 		switch (item.getItemId()) {
 		case SETTING:
 			final SharedPreferences.Editor edSetting = preSetting.edit();
-			int itemSelectedSetting = preSetting.getInt("FriendsExplorer-Setting", 0);
+			int itemSelectedSetting = preSetting.getInt(SETTING_DISABLE_ALERT, 0);
 			final CharSequence[] alertSetting = { "Enable alert", "Disable alert" };
 			AlertDialog.Builder settingAlertDialog = new AlertDialog.Builder(this);
 			settingAlertDialog.setTitle("Setting");
@@ -331,7 +335,7 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 					} else {
 
 					}
-					edSetting.putInt("FriendsExplorer-Setting", item);
+					edSetting.putInt(SETTING_DISABLE_ALERT, item);
 					edSetting.commit();
 				}
 			});
@@ -339,7 +343,7 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 			break;
 		case ALERT:
 			final SharedPreferences.Editor edAlert = preSetting.edit();
-			int itemSelectedAlert = preSetting.getInt("FriendsExplorer-Alert", 0);
+			int itemSelectedAlert = preSetting.getInt(SETTING_ALERT_TYPE, 0);
 			final CharSequence[] alertType = { "Traffic", "Cop" };
 			AlertDialog.Builder alertTypeDialog = new AlertDialog.Builder(this);
 			alertTypeDialog.setTitle("Alert type");
@@ -347,7 +351,7 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 				public void onClick(DialogInterface dialog, int item) {
 					dialog.cancel();
 					sendAlertToServer(alertType[item]);
-					edAlert.putInt("FriendsExplorer-Alert", item);
+					edAlert.putInt(SETTING_ALERT_TYPE, item);
 					edAlert.commit();
 				}
 			});
@@ -355,7 +359,7 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 			break;
 		case ABOUT:
 			final AlertDialog.Builder builder = new AlertDialog.Builder(this);
-			builder.setMessage("A product of Esat Agile company \n http://www.eastagile.com ").setCancelable(false)
+			builder.setMessage(SETTING_ABOUT).setCancelable(false)
 			    .setPositiveButton("Close", new DialogInterface.OnClickListener() {
 				    public void onClick(@SuppressWarnings("unused") final DialogInterface dialog, @SuppressWarnings("unused") final int id) {
 					    dialog.cancel();
@@ -437,13 +441,14 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 	}
 
 	public static boolean haveInternet(Context ctx) {
-//		NetworkInfo info = (NetworkInfo) ((ConnectivityManager) ctx.getSystemService(Context.CONNECTIVITY_SERVICE)).getActiveNetworkInfo();
-//		if (info == null || !info.isConnected()) {
-//			return false;
-//		}
-//		if (info.isRoaming()) {
-//			return false;
-//		}
+		// NetworkInfo info = (NetworkInfo) ((ConnectivityManager)
+		// ctx.getSystemService(Context.CONNECTIVITY_SERVICE)).getActiveNetworkInfo();
+		// if (info == null || !info.isConnected()) {
+		// return false;
+		// }
+		// if (info.isRoaming()) {
+		// return false;
+		// }
 		return true;
 	}
 

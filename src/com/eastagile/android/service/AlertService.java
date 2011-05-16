@@ -30,12 +30,11 @@ import android.os.Bundle;
 import android.os.IBinder;
 import android.telephony.TelephonyManager;
 import android.util.Log;
-import android.widget.Toast;
 
+import com.eastagile.android.DetailAddressActivity;
 import com.eastagile.android.FriendsExplorerActivity;
 import com.eastagile.android.R;
 import com.eastagile.android.util.util;
-import com.google.android.maps.GeoPoint;
 
 public class AlertService extends Service implements LocationListener {
 	private static final String TAG = "Test";
@@ -46,16 +45,19 @@ public class AlertService extends Service implements LocationListener {
 	private LocationManager locationManager;
 	private double myCurrentLat;
 	private double myCurrentLong;
-//	static final String HOST = "http://friendexplorer.heroku.com";
-	 static final String HOST = "http://192.168.25.174:3000";
+	// static final String HOST = "http://friendexplorer.heroku.com";
+	static final String HOST = "http://192.168.25.174:3000";
 	Notification notification;
 	NotificationManager mNotificationManager;
-	PendingIntent contentIntent;
+	PendingIntent contentIntentNoAddress;
+	PendingIntent contentIntentShowAddress;
 	FriendsExplorerActivity friendActivity;
 	private String[] arrayStringType;
 	private String[] arrayStringLong;
 	private String[] arrayStringLat;
 	private String uuid;
+	String addCop = "";
+	String addTraffic = "";
 
 	@Override
 	public void onStart(Intent intent, int startId) {
@@ -63,9 +65,11 @@ public class AlertService extends Service implements LocationListener {
 		String ns = Context.NOTIFICATION_SERVICE;
 		mNotificationManager = (NotificationManager) getSystemService(ns);
 		long when = System.currentTimeMillis();
-		notification = new Notification(R.drawable.icon, "FriendsExplorer Notification", when);
+		notification = new Notification(R.drawable.icon, "Traffice Alert Notification", when);
 		Intent notificationIntent = new Intent(this, FriendsExplorerActivity.class);
-		contentIntent = PendingIntent.getActivity(this, 0, notificationIntent, 0);
+		contentIntentNoAddress = PendingIntent.getActivity(this, 0, notificationIntent, 0);
+		notificationIntent = new Intent(this, DetailAddressActivity.class);
+		contentIntentShowAddress = PendingIntent.getActivity(this, 0, notificationIntent, 0);
 		notification.defaults |= Notification.DEFAULT_SOUND;
 		notification.defaults |= Notification.DEFAULT_VIBRATE;
 		notification.defaults |= Notification.DEFAULT_LIGHTS;
@@ -73,16 +77,17 @@ public class AlertService extends Service implements LocationListener {
 		locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 		locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 100, 10f, this);
 		locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 100, 10f, this);
-		if ((haveInternet(this))&&(locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) && (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER))) {
+		if ((haveInternet(this)) && (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER))
+		    && (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER))) {
 			Location loc = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
 			if (loc == null) {
 				loc = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
 			}
 			myCurrentLat = loc.getLatitude();
 			myCurrentLong = loc.getLongitude();
-			notification.setLatestEventInfo(getApplicationContext(), "FriendsExplorer notification", "FriendsExplorer is running!", contentIntent);
+			notification.setLatestEventInfo(getApplicationContext(), "Traffic Alert notification", "Traffic Alert is running!", contentIntentNoAddress);
 		} else {
-			notification.setLatestEventInfo(getApplicationContext(), "FriendsExplorer notification", "You must enable GPS, WiFi(3G) to continue", contentIntent);
+			notification.setLatestEventInfo(getApplicationContext(), "Traffic Alert notification", "You must enable GPS, WiFi(3G) to continue", contentIntentNoAddress);
 		}
 		mNotificationManager.notify(HELLO_ID, notification);
 		final TelephonyManager tm = (TelephonyManager) getBaseContext().getSystemService(Context.TELEPHONY_SERVICE);
@@ -126,8 +131,8 @@ public class AlertService extends Service implements LocationListener {
 			locationOfMine.setLongitude(myCurrentLong);
 			Boolean cop = false;
 			Boolean traffic = false;
-			String addCop = "";
-			String addTraffic = "";
+			addCop = "";
+			addTraffic = "";
 			if (arrayStringLong != null) {
 				logging("" + arrayStringLong.length);
 				for (int i = 0; i < arrayStringLong.length; i++) {
@@ -140,23 +145,25 @@ public class AlertService extends Service implements LocationListener {
 					if (distance_meters <= 2000) {
 						if (arrayStringType[i].toLowerCase().equals("cop")) {
 							cop = true;
-							addCop = addCop + getAddressFromLongLat(arrayStringLong[i],arrayStringLat[i])+ "   ";
+							addCop = addCop + getAddressFromLongLat(arrayStringLong[i], arrayStringLat[i]) + "   " +
+																	"( Distance: " + (int)distance_meters + " meters)";
 						} else {
 							traffic = true;
-							addTraffic = addTraffic + getAddressFromLongLat(arrayStringLong[i],arrayStringLat[i])+ "   ";
+							addTraffic = addTraffic + getAddressFromLongLat(arrayStringLong[i], arrayStringLat[i]) + "   " + 
+																	"( Distance: " + (int)distance_meters + " meters)";
 						}
-						
 					}
 				}
 			}
 			if (cop) {
-				notification.setLatestEventInfo(getApplicationContext(), "FriendsExplorer COP", "COP in " +addCop , contentIntent);
+				notification.setLatestEventInfo(getApplicationContext(), "Traffic Alert COP", "COP in " + addCop, contentIntentShowAddress);
 				mNotificationManager.notify(COP_NOTIFY_ID, notification);
 			}
 			if (traffic) {
-				notification.setLatestEventInfo(getApplicationContext(), "FriendsExplorer TRAFFIC", "TRAFFIC in "+ addTraffic, contentIntent);
+				notification.setLatestEventInfo(getApplicationContext(), "Traffic Alert TRAFFIC", "TRAFFIC in " + addTraffic, contentIntentShowAddress);
 				mNotificationManager.notify(TRAFFIC_NOTIFY_ID, notification);
 			}
+			if(cop||traffic) putSettingAddPreference();
 		} catch (Exception ex) {
 			ex.printStackTrace();
 		}
@@ -176,22 +183,30 @@ public class AlertService extends Service implements LocationListener {
 			e.printStackTrace();
 		}
 		return "";
-  }
-
-	public int getSettingPreference() {
-		SharedPreferences prefs = this.getSharedPreferences(friendActivity.PREFERENCE_NAME, MODE_WORLD_READABLE); // have
-		return prefs.getInt("FriendsExplorer-Setting", 0);
 	}
 
-	private TimerTask updateTask = new TimerTask() {
+	public int getSettingEnableAlertPre() {
+		SharedPreferences prefs = this.getSharedPreferences(friendActivity.PREFERENCE_NAME, MODE_WORLD_READABLE); // have
+		return prefs.getInt(FriendsExplorerActivity.SETTING_DISABLE_ALERT, 0);
+	}
+	
+	public void putSettingAddPreference() {
+		SharedPreferences prefs = this.getSharedPreferences(DetailAddressActivity.REFERRENCE_SHOW_ADD_NAME, MODE_WORLD_READABLE); // have
+		final SharedPreferences.Editor edSetting = prefs.edit();
+		edSetting.putString(DetailAddressActivity.STRING_SHOW_ADD, "COP in \n" + addCop + "\n"+"-------------------------"+" \n" + "TRAFFIC in \n" + addTraffic);
+		edSetting.commit();
+	}
+	
+		private TimerTask updateTask = new TimerTask() {
 		@Override
 		public void run() {
 			logging("Timer task doing work");
-			if ((haveInternet(AlertService.this))&&(locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) && (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER))) {
-				if (getSettingPreference() == 0)
+			if ((haveInternet(AlertService.this)) && (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER))
+			    && (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER))) {
+				if (getSettingEnableAlertPre() == 0)
 					checkAlertFromServer();
 			} else {
-				notification.setLatestEventInfo(getApplicationContext(), "FriendsExplorer notification", "You must enable GPS, WiFi(3G) to continue", contentIntent);
+				notification.setLatestEventInfo(getApplicationContext(), "Traffice Alert notification", "You must enable GPS, WiFi(3G) to continue", contentIntentNoAddress);
 				mNotificationManager.notify(HELLO_ID, notification);
 			}
 		}
@@ -234,7 +249,7 @@ public class AlertService extends Service implements LocationListener {
 	@Override
 	public void onStatusChanged(String arg0, int arg1, Bundle arg2) {
 	}
-	
+
 	public static boolean haveInternet(Context ctx) {
 		NetworkInfo info = (NetworkInfo) ((ConnectivityManager) ctx.getSystemService(Context.CONNECTIVITY_SERVICE)).getActiveNetworkInfo();
 		if (info == null || !info.isConnected()) {
