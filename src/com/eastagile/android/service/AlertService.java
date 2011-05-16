@@ -1,5 +1,8 @@
 package com.eastagile.android.service;
 
+import java.io.IOException;
+import java.util.List;
+import java.util.Locale;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.UUID;
@@ -15,17 +18,24 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.location.Address;
+import android.location.Geocoder;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.telephony.TelephonyManager;
 import android.util.Log;
+import android.widget.Toast;
 
 import com.eastagile.android.FriendsExplorerActivity;
 import com.eastagile.android.R;
 import com.eastagile.android.util.util;
+import com.google.android.maps.GeoPoint;
 
 public class AlertService extends Service implements LocationListener {
 	private static final String TAG = "Test";
@@ -36,8 +46,8 @@ public class AlertService extends Service implements LocationListener {
 	private LocationManager locationManager;
 	private double myCurrentLat;
 	private double myCurrentLong;
-	static final String HOST = "http://friendexplorer.heroku.com";
-	// static final String HOST = "http://192.168.25.174:3000";
+//	static final String HOST = "http://friendexplorer.heroku.com";
+	 static final String HOST = "http://192.168.25.174:3000";
 	Notification notification;
 	NotificationManager mNotificationManager;
 	PendingIntent contentIntent;
@@ -49,7 +59,6 @@ public class AlertService extends Service implements LocationListener {
 
 	@Override
 	public void onStart(Intent intent, int startId) {
-		// TODO Auto-generated method stub
 		super.onStart(intent, startId);
 		String ns = Context.NOTIFICATION_SERVICE;
 		mNotificationManager = (NotificationManager) getSystemService(ns);
@@ -60,15 +69,20 @@ public class AlertService extends Service implements LocationListener {
 		notification.defaults |= Notification.DEFAULT_SOUND;
 		notification.defaults |= Notification.DEFAULT_VIBRATE;
 		notification.defaults |= Notification.DEFAULT_LIGHTS;
+		notification.flags |= Notification.FLAG_SHOW_LIGHTS;
 		locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 		locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 100, 10f, this);
-		if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+		locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 100, 10f, this);
+		if ((haveInternet(this))&&(locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) && (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER))) {
 			Location loc = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+			if (loc == null) {
+				loc = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+			}
 			myCurrentLat = loc.getLatitude();
 			myCurrentLong = loc.getLongitude();
 			notification.setLatestEventInfo(getApplicationContext(), "FriendsExplorer notification", "FriendsExplorer is running!", contentIntent);
 		} else {
-			notification.setLatestEventInfo(getApplicationContext(), "FriendsExplorer notification", "You shoule enable GPS!", contentIntent);
+			notification.setLatestEventInfo(getApplicationContext(), "FriendsExplorer notification", "You must enable GPS, WiFi(3G) to continue", contentIntent);
 		}
 		mNotificationManager.notify(HELLO_ID, notification);
 		final TelephonyManager tm = (TelephonyManager) getBaseContext().getSystemService(Context.TELEPHONY_SERVICE);
@@ -112,6 +126,8 @@ public class AlertService extends Service implements LocationListener {
 			locationOfMine.setLongitude(myCurrentLong);
 			Boolean cop = false;
 			Boolean traffic = false;
+			String addCop = "";
+			String addTraffic = "";
 			if (arrayStringLong != null) {
 				logging("" + arrayStringLong.length);
 				for (int i = 0; i < arrayStringLong.length; i++) {
@@ -124,35 +140,58 @@ public class AlertService extends Service implements LocationListener {
 					if (distance_meters <= 2000) {
 						if (arrayStringType[i].toLowerCase().equals("cop")) {
 							cop = true;
+							addCop = addCop + getAddressFromLongLat(arrayStringLong[i],arrayStringLat[i])+ "   ";
 						} else {
 							traffic = true;
+							addTraffic = addTraffic + getAddressFromLongLat(arrayStringLong[i],arrayStringLat[i])+ "   ";
 						}
+						
 					}
-
 				}
 			}
 			if (cop) {
-				notification.setLatestEventInfo(getApplicationContext(), "FriendsExplorer COP", "You're near a COP!", contentIntent);
+				notification.setLatestEventInfo(getApplicationContext(), "FriendsExplorer COP", "COP in " +addCop , contentIntent);
 				mNotificationManager.notify(COP_NOTIFY_ID, notification);
 			}
 			if (traffic) {
-				notification.setLatestEventInfo(getApplicationContext(), "FriendsExplorer TRAFFIC", "You're near a TRAFFIC!", contentIntent);
+				notification.setLatestEventInfo(getApplicationContext(), "FriendsExplorer TRAFFIC", "TRAFFIC in "+ addTraffic, contentIntent);
 				mNotificationManager.notify(TRAFFIC_NOTIFY_ID, notification);
 			}
 		} catch (Exception ex) {
 			ex.printStackTrace();
-			// throw new RuntimeException(ex);
 		}
+	}
+
+	private String getAddressFromLongLat(String longtitude, String latitude) {
+		Geocoder geoCoder = new Geocoder(getBaseContext(), Locale.getDefault());
+		try {
+			List<Address> addresses = geoCoder.getFromLocation(Double.valueOf(latitude), Double.valueOf(longtitude), 1);
+			String add = "";
+			if (addresses.size() > 0) {
+				for (int i = 0; i < addresses.get(0).getMaxAddressLineIndex(); i++)
+					add += addresses.get(0).getAddressLine(i) + "\n";
+			}
+			return add;
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		return "";
+  }
+
+	public int getSettingPreference() {
+		SharedPreferences prefs = this.getSharedPreferences(friendActivity.PREFERENCE_NAME, MODE_WORLD_READABLE); // have
+		return prefs.getInt("FriendsExplorer-Setting", 0);
 	}
 
 	private TimerTask updateTask = new TimerTask() {
 		@Override
 		public void run() {
 			logging("Timer task doing work");
-			if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-				checkAlertFromServer();
+			if ((haveInternet(AlertService.this))&&(locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) && (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER))) {
+				if (getSettingPreference() == 0)
+					checkAlertFromServer();
 			} else {
-				notification.setLatestEventInfo(getApplicationContext(), "FriendsExplorer notification", "You shoule enable GPS!", contentIntent);
+				notification.setLatestEventInfo(getApplicationContext(), "FriendsExplorer notification", "You must enable GPS, WiFi(3G) to continue", contentIntent);
 				mNotificationManager.notify(HELLO_ID, notification);
 			}
 		}
@@ -186,19 +225,24 @@ public class AlertService extends Service implements LocationListener {
 
 	@Override
 	public void onProviderDisabled(String arg0) {
-		// TODO Auto-generated method stub
-
 	}
 
 	@Override
 	public void onProviderEnabled(String arg0) {
-		// TODO Auto-generated method stub
-
 	}
 
 	@Override
 	public void onStatusChanged(String arg0, int arg1, Bundle arg2) {
-		// TODO Auto-generated method stub
-
+	}
+	
+	public static boolean haveInternet(Context ctx) {
+		NetworkInfo info = (NetworkInfo) ((ConnectivityManager) ctx.getSystemService(Context.CONNECTIVITY_SERVICE)).getActiveNetworkInfo();
+		if (info == null || !info.isConnected()) {
+			return false;
+		}
+		if (info.isRoaming()) {
+			return false;
+		}
+		return true;
 	}
 }

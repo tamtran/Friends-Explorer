@@ -27,6 +27,8 @@ import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.location.LocationProvider;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.provider.Settings;
@@ -54,8 +56,10 @@ import com.google.android.maps.Overlay;
 public class FriendsExplorerActivity extends MapActivity implements LocationListener {
 	int REQUEST_GPS_CODE = 0;
 	static final String tag = "Test"; // for Log
-	 static final String HOST = "http://friendexplorer.heroku.com";
-//	static final String HOST = "http://192.168.25.174:3000";
+	public static final String PREFERENCE_NAME = "Preference Setting for Friends Explorer"; // for
+	                                                                                        // Log
+//	static final String HOST = "http://friendexplorer.heroku.com";
+	 static final String HOST = "http://192.168.25.174:3000";
 	static MapView mapView;
 	static MapController mapController;
 	static GeoPoint myCurrentGeoPoint;
@@ -76,6 +80,7 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 	private static final int ABOUT = 2;
 	private static final int QUIT = 3;
 	Timer timer;
+	SharedPreferences preSetting;
 
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
@@ -105,21 +110,30 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 		UUID deviceUuid = new UUID(androidId.hashCode(), ((long) tmDevice.hashCode() << 32) | tmSerial.hashCode());
 		uuid = deviceUuid.toString();
 		logging("UUID " + uuid);
+		preSetting = getSharedPreferences(PREFERENCE_NAME, MODE_PRIVATE);
 		startService(new Intent(AlertService.class.getName()));
 		locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 		locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 100, 10f, this);
+		locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 100, 10f, this);
 		displayLocationTask = new DisplayLocationTask();
 		timer = new Timer("UpdateOtherLocationTimer");
-		if (!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-			buildAlertMessageNoGps();
-		} else {
+		checkLocationAndAction();
+	}
+
+	private void checkLocationAndAction() {
+		if ((locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) && (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER))&&(haveInternet(this))) {
 			Location loc = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+			if (loc == null) {
+				loc = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+			}
 			myCurrentLat = loc.getLatitude();
 			myCurrentLong = loc.getLongitude();
 			timer.schedule(updateTask, 100L, 5 * 60 * 1000L);
+		} else {
+			buildAlertMessageNoGps();
 		}
 	}
-	
+
 	private TimerTask updateTask = new TimerTask() {
 		@Override
 		public void run() {
@@ -130,10 +144,10 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 			displayLocationTask.execute();
 		}
 	};
-	
+
 	private void buildAlertMessageNoGps() {
 		final AlertDialog.Builder builder = new AlertDialog.Builder(this);
-		builder.setMessage("Your GPS seems to be disabled, you MUST enable it to continue?").setCancelable(false)
+		builder.setMessage("Your GPS or WiFi or 3G seems to be disabled, you MUST enable all of them to continue!").setCancelable(false)
 		    .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
 			    public void onClick(@SuppressWarnings("unused") final DialogInterface dialog, @SuppressWarnings("unused") final int id) {
 				    launchGPSOptions();
@@ -151,14 +165,7 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 	@Override
 	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
 		if (requestCode == REQUEST_GPS_CODE && resultCode == 0) {
-			if (!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-				buildAlertMessageNoGps();
-			} else {
-				Location loc = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-				myCurrentLat = loc.getLatitude();
-				myCurrentLong = loc.getLongitude();
-				timer.schedule(updateTask, 100L, 5 * 60 * 1000L);
-			}
+			checkLocationAndAction();
 		}
 	}
 
@@ -311,7 +318,6 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 	public boolean onOptionsItemSelected(MenuItem item) {
 		switch (item.getItemId()) {
 		case SETTING:
-			SharedPreferences preSetting = getPreferences(MODE_PRIVATE);
 			final SharedPreferences.Editor edSetting = preSetting.edit();
 			int itemSelectedSetting = preSetting.getInt("FriendsExplorer-Setting", 0);
 			final CharSequence[] alertSetting = { "Enable alert", "Disable alert" };
@@ -332,9 +338,8 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 			settingAlertDialog.create().show();
 			break;
 		case ALERT:
-			SharedPreferences preAlert = getPreferences(MODE_PRIVATE);
-			final SharedPreferences.Editor edAlert = preAlert.edit();
-			int itemSelectedAlert = preAlert.getInt("FriendsExplorer-Alert", 0);
+			final SharedPreferences.Editor edAlert = preSetting.edit();
+			int itemSelectedAlert = preSetting.getInt("FriendsExplorer-Alert", 0);
 			final CharSequence[] alertType = { "Traffic", "Cop" };
 			AlertDialog.Builder alertTypeDialog = new AlertDialog.Builder(this);
 			alertTypeDialog.setTitle("Alert type");
@@ -418,7 +423,7 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 	public static void logging(String input) {
 		Log.d(tag, input);
 	}
-		
+
 	@Override
 	public void onProviderDisabled(String s) {
 	}
@@ -426,4 +431,20 @@ public class FriendsExplorerActivity extends MapActivity implements LocationList
 	@Override
 	public void onProviderEnabled(String s) {
 	}
+
+	public SharedPreferences getSharedPreference() {
+		return this.preSetting;
+	}
+
+	public static boolean haveInternet(Context ctx) {
+//		NetworkInfo info = (NetworkInfo) ((ConnectivityManager) ctx.getSystemService(Context.CONNECTIVITY_SERVICE)).getActiveNetworkInfo();
+//		if (info == null || !info.isConnected()) {
+//			return false;
+//		}
+//		if (info.isRoaming()) {
+//			return false;
+//		}
+		return true;
+	}
+
 }
